@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024"],
+
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+
+    "types": ["node"],
+
+    "resolveJsonModule": true,
+
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true
+  }
+}
