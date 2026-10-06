@@ -1,3 +1,4 @@
+import { CurrencyMismatchError } from './errors/currency-mismatch.error.js';
 import { InvalidCurrencyCodeError } from './errors/invalid-currency-code.error.js';
 import { MoneyAmountOutOfRangeError } from './errors/money-amount-out-of-range.error.js';
 
@@ -22,5 +23,13 @@ export class Money {
     }
 
     return new Money(amountMinor, currency);
+  }
+
+  add(other: Money): Money {
+    if (this.currency !== other.currency) {
+      throw new CurrencyMismatchError(this.currency, other.currency);
+    }
+
+    return Money.of(this.amountMinor + other.amountMinor, this.currency);
   }
 }

@@ -68,4 +68,39 @@ describe('Money', () => {
       );
     });
   });
+
+  describe('addition', () => {
+    it('adds money with the same currency', () => {
+      const left = Money.of(1000n, 'PKR');
+      const right = Money.of(250n, 'PKR');
+
+      const result = left.add(right);
+
+      expect(result.amountMinor).toBe(1250n);
+      expect(result.currency).toBe('PKR');
+    });
+
+    it('adds negative money exactly', () => {
+      const left = Money.of(1000n, 'PKR');
+      const right = Money.of(-250n, 'PKR');
+
+      const result = left.add(right);
+
+      expect(result.amountMinor).toBe(750n);
+    });
+
+    it('rejects addition across different currencies', () => {
+      const pkr = Money.of(1000n, 'PKR');
+      const usd = Money.of(1000n, 'USD');
+
+      expect(() => pkr.add(usd)).toThrow('Currency mismatch');
+    });
+
+    it('rejects addition when the result exceeds the supported range', () => {
+      const maximum = Money.of(9223372036854775807n, 'PKR');
+      const one = Money.of(1n, 'PKR');
+
+      expect(() => maximum.add(one)).toThrow('Money amount is outside the supported range');
+    });
+  });
 });
