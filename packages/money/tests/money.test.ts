@@ -6,7 +6,7 @@ describe('Money', () => {
   describe('creation', () => {
     it('creates money using bigint minor units and currency', () => {
       const money = Money.of(250000n, 'PKR');
-      
+
       expect(money.amountMinor).toBe(250000n);
       expect(money.currency).toBe('PKR');
     });
@@ -29,6 +29,19 @@ describe('Money', () => {
       const money = Money.of(-500n, 'PKR');
 
       expect(money.amountMinor).toBe(-500n);
+    });
+
+    it.each(['', 'pkr', 'PK', 'PKRR', 'P1R', ' PKR '])(
+      'rejects malformed currency code "%s"',
+      (currency) => {
+        expect(() => Money.of(100n, currency)).toThrow('Invalid currency code');
+      },
+    );
+
+    it.each(['PKR', 'USD', 'EUR'])('accepts valid currency code "%s"', (currency) => {
+      const money = Money.of(100n, currency);
+
+      expect(money.currency).toBe(currency);
     });
   });
 });
