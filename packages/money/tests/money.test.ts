@@ -43,5 +43,29 @@ describe('Money', () => {
 
       expect(money.currency).toBe(currency);
     });
+
+    it('accepts the minimum supported minor-unit amount', () => {
+      const money = Money.of(-9223372036854775808n, 'PKR');
+
+      expect(money.amountMinor).toBe(-9223372036854775808n);
+    });
+
+    it('accepts the maximum supported minor-unit amount', () => {
+      const money = Money.of(9223372036854775807n, 'PKR');
+
+      expect(money.amountMinor).toBe(9223372036854775807n);
+    });
+
+    it('rejects an amount below the supported minor-unit range', () => {
+      expect(() => Money.of(-9223372036854775809n, 'PKR')).toThrow(
+        'Money amount is outside the supported range',
+      );
+    });
+
+    it('rejects an amount above the supported minor-unit range', () => {
+      expect(() => Money.of(9223372036854775808n, 'PKR')).toThrow(
+        'Money amount is outside the supported range',
+      );
+    });
   });
 });
