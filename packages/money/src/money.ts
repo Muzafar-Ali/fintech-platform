@@ -41,4 +41,16 @@ export class Money {
 
     return Money.of(this.amountMinor - other.amountMinor, this.currency);
   }
+
+  equals(other: Money): boolean {
+    return this.amountMinor === other.amountMinor && this.currency === other.currency;
+  }
+
+  isZero(): boolean {
+    return this.amountMinor === 0n;
+  }
+
+  negate(): Money {
+    return Money.of(-this.amountMinor, this.currency);
+  }
 }

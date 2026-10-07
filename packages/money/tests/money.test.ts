@@ -138,4 +138,81 @@ describe('Money', () => {
       expect(() => minimum.subtract(one)).toThrow('Money amount is outside the supported range');
     });
   });
+
+  describe('equality', () => {
+    it('returns true when amount and currency are equal', () => {
+      const left = Money.of(1000n, 'PKR');
+      const right = Money.of(1000n, 'PKR');
+
+      expect(left.equals(right)).toBe(true);
+    });
+
+    it('returns false when amounts are different', () => {
+      const left = Money.of(1000n, 'PKR');
+      const right = Money.of(999n, 'PKR');
+
+      expect(left.equals(right)).toBe(false);
+    });
+
+    it('returns false when currencies are different', () => {
+      const pkr = Money.of(1000n, 'PKR');
+      const usd = Money.of(1000n, 'USD');
+
+      expect(pkr.equals(usd)).toBe(false);
+    });
+  });
+
+  describe('zero', () => {
+    it('returns true when the amount is zero', () => {
+      const money = Money.of(0n, 'PKR');
+
+      expect(money.isZero()).toBe(true);
+    });
+
+    it('returns false when the amount is positive', () => {
+      const money = Money.of(1n, 'PKR');
+
+      expect(money.isZero()).toBe(false);
+    });
+
+    it('returns false when the amount is negative', () => {
+      const money = Money.of(-1n, 'PKR');
+
+      expect(money.isZero()).toBe(false);
+    });
+  });
+
+  describe('negation', () => {
+    it('negates a positive amount', () => {
+      const money = Money.of(500n, 'PKR');
+
+      const result = money.negate();
+
+      expect(result.amountMinor).toBe(-500n);
+      expect(result.currency).toBe('PKR');
+    });
+
+    it('negates a negative amount', () => {
+      const money = Money.of(-500n, 'PKR');
+
+      const result = money.negate();
+
+      expect(result.amountMinor).toBe(500n);
+      expect(result.currency).toBe('PKR');
+    });
+
+    it('keeps zero as zero when negated', () => {
+      const money = Money.of(0n, 'PKR');
+
+      const result = money.negate();
+
+      expect(result.amountMinor).toBe(0n);
+    });
+
+    it('rejects negation when the result exceeds the supported range', () => {
+      const minimum = Money.of(-9223372036854775808n, 'PKR');
+
+      expect(() => minimum.negate()).toThrow('Money amount is outside the supported range');
+    });
+  });
 });
