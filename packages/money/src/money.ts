@@ -4,6 +4,7 @@ import { MoneyAmountOutOfRangeError } from './errors/money-amount-out-of-range.e
 
 const CURRENCY_CODE_PATTERN = /^[A-Z]{3}$/;
 
+// min/max 64 bit supported by postgresql
 const MIN_SUPPORTED_AMOUNT_MINOR = -9223372036854775808n;
 const MAX_SUPPORTED_AMOUNT_MINOR = 9223372036854775807n;
 
@@ -31,5 +32,13 @@ export class Money {
     }
 
     return Money.of(this.amountMinor + other.amountMinor, this.currency);
+  }
+
+  subtract(other: Money): Money {
+    if (this.currency !== other.currency) {
+      throw new CurrencyMismatchError(this.currency, other.currency);
+    }
+
+    return Money.of(this.amountMinor - other.amountMinor, this.currency);
   }
 }

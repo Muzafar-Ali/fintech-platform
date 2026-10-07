@@ -103,4 +103,39 @@ describe('Money', () => {
       expect(() => maximum.add(one)).toThrow('Money amount is outside the supported range');
     });
   });
+
+  describe('subtraction', () => {
+    it('subtracts money with the same currency', () => {
+      const left = Money.of(1000n, 'PKR');
+      const right = Money.of(250n, 'PKR');
+
+      const result = left.subtract(right);
+
+      expect(result.amountMinor).toBe(750n);
+      expect(result.currency).toBe('PKR');
+    });
+
+    it('can produce a negative result', () => {
+      const left = Money.of(250n, 'PKR');
+      const right = Money.of(1000n, 'PKR');
+
+      const result = left.subtract(right);
+
+      expect(result.amountMinor).toBe(-750n);
+    });
+
+    it('rejects subtraction across different currencies', () => {
+      const pkr = Money.of(1000n, 'PKR');
+      const usd = Money.of(100n, 'USD');
+
+      expect(() => pkr.subtract(usd)).toThrow('Currency mismatch');
+    });
+
+    it('rejects subtraction when the result exceeds the supported range', () => {
+      const minimum = Money.of(-9223372036854775808n, 'PKR');
+      const one = Money.of(1n, 'PKR');
+
+      expect(() => minimum.subtract(one)).toThrow('Money amount is outside the supported range');
+    });
+  });
 });
