@@ -42,13 +42,9 @@ export default defineConfig(
       ],
 
       '@typescript-eslint/no-explicit-any': 'error',
-
       '@typescript-eslint/no-floating-promises': 'error',
-
       '@typescript-eslint/no-misused-promises': 'error',
-
       '@typescript-eslint/switch-exhaustiveness-check': 'error',
-
       '@typescript-eslint/no-unnecessary-condition': 'error',
 
       eqeqeq: ['error', 'always'],
