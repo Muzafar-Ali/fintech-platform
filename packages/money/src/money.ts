@@ -60,4 +60,20 @@ export class Money {
   negate(): Money {
     return Money.of(-this.amountMinor, this.currency);
   }
+
+  compare(other: Money): -1 | 0 | 1 {
+    if (this.currency !== other.currency) {
+      throw new CurrencyMismatchError(this.currency, other.currency);
+    }
+
+    if (this.amountMinor < other.amountMinor) {
+      return -1;
+    }
+
+    if (this.amountMinor > other.amountMinor) {
+      return 1;
+    }
+
+    return 0;
+  }
 }

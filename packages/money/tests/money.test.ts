@@ -215,4 +215,78 @@ describe('Money', () => {
       expect(() => minimum.negate()).toThrow('Money amount is outside the supported range');
     });
   });
+
+  describe('comparison', () => {
+    it('returns zero when both amounts are equal', () => {
+      const left = Money.of(1000n, 'PKR');
+      const right = Money.of(1000n, 'PKR');
+
+      expect(left.compare(right)).toBe(0);
+    });
+
+    it('returns -1 when the left amount is smaller', () => {
+      const left = Money.of(500n, 'PKR');
+      const right = Money.of(1000n, 'PKR');
+
+      expect(left.compare(right)).toBe(-1);
+    });
+
+    it('returns 1 when the left amount is greater', () => {
+      const left = Money.of(1500n, 'PKR');
+      const right = Money.of(1000n, 'PKR');
+
+      expect(left.compare(right)).toBe(1);
+    });
+
+    it('compares negative amounts correctly', () => {
+      const left = Money.of(-1000n, 'PKR');
+      const right = Money.of(-500n, 'PKR');
+
+      expect(left.compare(right)).toBe(-1);
+      expect(right.compare(left)).toBe(1);
+    });
+
+    it('compares zero against negative amounts', () => {
+      const zero = Money.of(0n, 'PKR');
+      const negative = Money.of(-100n, 'PKR');
+
+      expect(zero.compare(negative)).toBe(1);
+      expect(negative.compare(zero)).toBe(-1);
+    });
+
+    it('compares integers beyond Number.MAX_SAFE_INTEGER exactly', () => {
+      const left = Money.of(9007199254740992n, 'PKR');
+      const right = Money.of(9007199254740993n, 'PKR');
+
+      expect(left.compare(right)).toBe(-1);
+      expect(right.compare(left)).toBe(1);
+    });
+
+    it('compares the minimum and maximum supported amounts', () => {
+      const minimum = Money.of(-9223372036854775808n, 'PKR');
+      const maximum = Money.of(9223372036854775807n, 'PKR');
+
+      expect(minimum.compare(maximum)).toBe(-1);
+      expect(maximum.compare(minimum)).toBe(1);
+    });
+
+    it('rejects comparison across different currencies', () => {
+      const pkr = Money.of(1000n, 'PKR');
+      const usd = Money.of(1000n, 'USD');
+
+      expect(() => pkr.compare(usd)).toThrow('Currency mismatch');
+    });
+
+    it('does not mutate either money object during comparison', () => {
+      const left = Money.of(1000n, 'PKR');
+      const right = Money.of(2000n, 'PKR');
+
+      left.compare(right);
+
+      expect(left.amountMinor).toBe(1000n);
+      expect(right.amountMinor).toBe(2000n);
+      expect(left.currency).toBe('PKR');
+      expect(right.currency).toBe('PKR');
+    });
+  });
 });
