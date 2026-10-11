@@ -289,4 +289,195 @@ describe('Money', () => {
       expect(right.currency).toBe('PKR');
     });
   });
+
+  describe('serialization', () => {
+    it('serializes positive money using a decimal string', () => {
+      const money = Money.of(250000n, 'PKR');
+
+      expect(money.toJSON()).toEqual({
+        amount_minor: '250000',
+        currency: 'PKR',
+      });
+    });
+
+    it('serializes zero correctly', () => {
+      const money = Money.of(0n, 'USD');
+
+      expect(money.toJSON()).toEqual({
+        amount_minor: '0',
+        currency: 'USD',
+      });
+    });
+
+    it('serializes negative money correctly', () => {
+      const money = Money.of(-500n, 'PKR');
+
+      expect(money.toJSON()).toEqual({
+        amount_minor: '-500',
+        currency: 'PKR',
+      });
+    });
+
+    it('preserves large monetary amounts exactly', () => {
+      const money = Money.of(9223372036854775807n, 'PKR');
+
+      const result = money.toJSON();
+
+      expect(result.amount_minor).toBe('9223372036854775807');
+      expect(typeof result.amount_minor).toBe('string');
+    });
+
+    it('supports native JSON.stringify without bigint errors', () => {
+      const money = Money.of(250000n, 'PKR');
+
+      const serialized = JSON.stringify(money);
+      const parsed: unknown = JSON.parse(serialized);
+
+      expect(parsed).toEqual({
+        amount_minor: '250000',
+        currency: 'PKR',
+      });
+    });
+  });
+
+  describe('deserialization', () => {
+    it('restores a positive monetary amount', () => {
+      const money = Money.fromJSON({
+        amount_minor: '250000',
+        currency: 'PKR',
+      });
+
+      expect(money.amountMinor).toBe(250000n);
+      expect(money.currency).toBe('PKR');
+    });
+
+    it('restores zero', () => {
+      const money = Money.fromJSON({
+        amount_minor: '0',
+        currency: 'USD',
+      });
+
+      expect(money.amountMinor).toBe(0n);
+    });
+
+    it('restores negative monetary amounts', () => {
+      const money = Money.fromJSON({
+        amount_minor: '-500',
+        currency: 'PKR',
+      });
+
+      expect(money.amountMinor).toBe(-500n);
+    });
+
+    it('restores the maximum supported amount exactly', () => {
+      const money = Money.fromJSON({
+        amount_minor: '9223372036854775807',
+        currency: 'PKR',
+      });
+
+      expect(money.amountMinor).toBe(9223372036854775807n);
+    });
+
+    it('restores the minimum supported amount exactly', () => {
+      const money = Money.fromJSON({
+        amount_minor: '-9223372036854775808',
+        currency: 'PKR',
+      });
+
+      expect(money.amountMinor).toBe(-9223372036854775808n);
+    });
+
+    it('round-trips through native JSON without losing precision', () => {
+      const original = Money.of(9007199254740993n, 'PKR');
+
+      const serialized = JSON.stringify(original);
+      const parsed: unknown = JSON.parse(serialized);
+
+      const restored = Money.fromJSON(parsed);
+
+      expect(restored.equals(original)).toBe(true);
+    });
+
+    it.each([
+      { name: 'null', payload: null },
+      { name: 'array', payload: [] },
+      { name: 'string', payload: '100' },
+      { name: 'empty object', payload: {} },
+      { name: 'missing amount', payload: { currency: 'PKR' } },
+      { name: 'missing currency', payload: { amount_minor: '100' } },
+      { name: 'numeric amount', payload: { amount_minor: 100, currency: 'PKR' } },
+      { name: 'bigint amount', payload: { amount_minor: 100n, currency: 'PKR' } },
+      { name: 'null amount', payload: { amount_minor: null, currency: 'PKR' } },
+      { name: 'numeric currency', payload: { amount_minor: '100', currency: 123 } },
+    ])('rejects malformed JSON shape: $name', ({ payload }) => {
+      expect(() => Money.fromJSON(payload)).toThrow('Invalid money JSON');
+    });
+
+    it.each(['', ' ', '01', '-01', '+100', '-0', '1.5', '1e3', ' 100', '100 ', '1_000', '--5'])(
+      'rejects non-canonical monetary string "%s"',
+      (amount) => {
+        expect(() =>
+          Money.fromJSON({
+            amount_minor: amount,
+            currency: 'PKR',
+          }),
+        ).toThrow('Invalid money JSON');
+      },
+    );
+
+    it.each(['pkr', 'US'])('rejects malformed currency "%s"', (currency) => {
+      expect(() =>
+        Money.fromJSON({
+          amount_minor: '100',
+          currency,
+        }),
+      ).toThrow('Invalid currency code');
+    });
+
+    it.each(['9223372036854775808', '-9223372036854775809'])(
+      'rejects an out-of-range amount "%s"',
+      (amount) => {
+        expect(() =>
+          Money.fromJSON({
+            amount_minor: amount,
+            currency: 'PKR',
+          }),
+        ).toThrow('Money amount is outside the supported range');
+      },
+    );
+  });
+
+  describe('deserialization hardening', () => {
+    it.each(['100\n', '100\r', '100\r\n', '100\t', '100\n\n'])(
+      'rejects monetary strings containing trailing control characters',
+      (amount) => {
+        expect(() =>
+          Money.fromJSON({
+            amount_minor: amount,
+            currency: 'PKR',
+          }),
+        ).toThrow('Invalid money JSON');
+      },
+    );
+
+    it('rejects monetary strings exceeding the maximum supported length', () => {
+      const oversizedAmount = '9'.repeat(100_000);
+
+      expect(() =>
+        Money.fromJSON({
+          amount_minor: oversizedAmount,
+          currency: 'PKR',
+        }),
+      ).toThrow('Invalid money JSON');
+    });
+
+    it('continues accepting the longest valid negative amount', () => {
+      const money = Money.fromJSON({
+        amount_minor: '-9223372036854775808',
+        currency: 'PKR',
+      });
+
+      expect(money.amountMinor).toBe(-9223372036854775808n);
+    });
+  });
 });
