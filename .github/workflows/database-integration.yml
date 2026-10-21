@@ -1,0 +1,83 @@
+name: Database Integration
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  database-integration:
+    name: PostgreSQL Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:17-bookworm
+
+        env:
+          POSTGRES_USER: fintech_ci
+          POSTGRES_PASSWORD: ci_only_database_password
+          POSTGRES_DB: fintech_ci
+
+        ports:
+          - 5433:5432
+
+        options: >-
+          --health-cmd "pg_isready -U fintech_ci -d fintech_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.9.1
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Existing integration tests load ../../.env.
+      # These credentials belong only to this temporary CI database.
+      - name: Configure integration environment
+        run: |
+          cat > .env <<'EOF'
+          POSTGRES_HOST=127.0.0.1
+          POSTGRES_PORT=5433
+          POSTGRES_USER=fintech_ci
+          POSTGRES_PASSWORD=ci_only_database_password
+          POSTGRES_DB=fintech_ci
+          POSTGRES_MAX_CONNECTIONS=10
+          EOF
+
+      - name: Build database package
+        run: pnpm --filter @fintech/database build
+
+      - name: Check pending migrations
+        run: pnpm --filter @fintech/database migrate:status
+
+      - name: Apply database migrations
+        run: pnpm --filter @fintech/database migrate:up
+
+      - name: Verify repeat migration execution
+        run: |
+          output=$(pnpm --filter @fintech/database migrate:up)
+          echo "$output"
+          echo "$output" | grep -F "No pending migrations"
+
+      - name: Run PostgreSQL integration tests
+        run: pnpm --filter @fintech/database test:integration

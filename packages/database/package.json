@@ -6,6 +6,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tests/tsconfig.json --noEmit",
+    "migrate:status": "pnpm run build && node --env-file-if-exists=../../.env dist/cli/migrate.js status",
+    "migrate:up": "pnpm run build && node --env-file-if-exists=../../.env dist/cli/migrate.js up",
     "test": "vitest run --exclude \"tests/integration/**\"",
     "test:integration": "vitest run tests/integration",
     "test:watch": "vitest"
