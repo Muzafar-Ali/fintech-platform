@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-
-import { formatPgInt8, InvalidPgInt8Error, parsePgInt8 } from '../src/index.js';
+import { formatPgInt8, InvalidPgInt8Error, parsePgInt8 } from '../../src/index.js';
 
 const MIN_INT8 = -9223372036854775808n;
 const MAX_INT8 = 9223372036854775807n;
