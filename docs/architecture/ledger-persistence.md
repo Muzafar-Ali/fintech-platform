@@ -135,3 +135,60 @@ This planned sequence requires application services, idempotency and outbox migr
 
 - [ADR-012: Ledger persistence and invariants](../adr/ADR-012-ledger-persistence-and-invariants.md)
 - [ADR-013: UUIDv7 identifiers](../adr/ADR-013-uuidv7-identifier-strategy.md)
+
+## Ledger domain validation
+
+The Ledger module contains a pure journal preparation operation:
+
+`modules/ledger/src/domain/services/prepare-balanced-journal.ts`
+
+The operation accepts a journal draft containing tenant ID,
+currency and debit/credit postings. It validates the financial
+structure, calculates exact debit and credit totals, assigns
+sequential posting line numbers and returns an immutable
+`PreparedJournal`.
+
+### Validation and persistence boundaries
+
+```mermaid
+flowchart TD
+    A[Future application posting command] --> B[Ledger domain validation]
+    B --> C{Valid and balanced?}
+    C -->|No| D[Typed domain error]
+    C -->|Yes| E[PreparedJournal]
+    E --> F[Future application transaction service]
+    F --> G[PostgreSQL ledger tables]
+    G --> H[Database constraints and deferred triggers]
+    H --> I{Commit valid?}
+    I -->|No| J[Rollback]
+    I -->|Yes| K[Commit]
+```
+
+The domain validation implementation exists today. The
+application transaction service and end-to-end posting command
+remain future scope.
+
+### Responsibility separation
+
+| Layer         | Responsibility                                                                                   |
+| ------------- | ------------------------------------------------------------------------------------------------ |
+| Domain        | Posting count, positive amounts, balancing, deterministic line numbers                           |
+| Money package | Monetary range validation and exact monetary representation                                      |
+| Application   | Command orchestration, tenant authorization, idempotency and transaction boundaries              |
+| Database      | Account existence, tenant/currency foreign keys, immutable persisted rows, commit-time balancing |
+| Future outbox | Atomic business-event persistence and reliable asynchronous delivery                             |
+
+The domain's prepared totals are not the authoritative persisted
+balance. PostgreSQL revalidates journal postings independently.
+
+### Verification
+
+- 27 Ledger domain unit tests.
+- 7 Ledger domain property tests.
+- 300 generated cases per property, totaling 2,100 runs.
+- Exact `bigint` arithmetic including aggregates larger than
+  an individual PostgreSQL `BIGINT` value.
+- Input immutability and deterministic output verification.
+
+Architecture decision:
+[ADR-014: Journal domain validation](../adr/ADR-014-journal-domain-validation.md).

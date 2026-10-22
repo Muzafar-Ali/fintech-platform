@@ -94,17 +94,18 @@ Integration tests require a running PostgreSQL instance.
 
 ### Implemented capabilities
 
-| Area                                | Current implementation                                                                                                  |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Exact monetary representation       | TypeScript `bigint` minor units; canonical string serialization; validated PostgreSQL signed `BIGINT` mapping           |
-| Database layer                      | PostgreSQL 17, Kysely connection factory, validated environment configuration with Zod                                  |
-| Migration lifecycle                 | Versioned migrations, migration history/locking, forward-only CLI (`migrate:status`, `migrate:up`)                      |
-| Ledger persistence                  | `ledger.accounts`, `ledger.journals`, and `ledger.postings` created by migration `20261021_000002_create_ledger_tables` |
-| Journal lifecycle at database level | `PENDING` → `POSTED` or `CANCELLED`; finalized journals cannot be edited or deleted                                     |
-| Journal financial integrity         | Deferred, commit-time checks: posted journals require at least two postings and equal total debits/credits              |
-| Account and posting guards          | Positive posting amounts, immutable postings, protected account identity, active-account checks                         |
-| Tenant/currency isolation           | Composite foreign keys enforce compatible tenant/currency across journal, account, and posting                          |
-| Reversal references                 | References must identify a posted journal in the same tenant/currency; one reversal reference per original journal      |
+| Area                                | Current implementation                                                                                                                                    |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Exact monetary representation       | TypeScript `bigint` minor units; canonical string serialization; validated PostgreSQL signed `BIGINT` mapping                                             |
+| Database layer                      | PostgreSQL 17, Kysely connection factory, validated environment configuration with Zod                                                                    |
+| Migration lifecycle                 | Versioned migrations, migration history/locking, forward-only CLI (`migrate:status`, `migrate:up`)                                                        |
+| Ledger persistence                  | `ledger.accounts`, `ledger.journals`, and `ledger.postings` created by migration `20261021_000002_create_ledger_tables`                                   |
+| Journal lifecycle at database level | `PENDING` → `POSTED` or `CANCELLED`; finalized journals cannot be edited or deleted                                                                       |
+| Journal financial integrity         | Deferred, commit-time checks: posted journals require at least two postings and equal total debits/credits                                                |
+| Account and posting guards          | Positive posting amounts, immutable postings, protected account identity, active-account checks                                                           |
+| Tenant/currency isolation           | Composite foreign keys enforce compatible tenant/currency across journal, account, and posting                                                            |
+| Reversal references                 | References must identify a posted journal in the same tenant/currency; one reversal reference per original journal                                        |
+| Ledger domain validation            | Pure `prepareBalancedJournal()` service with exact `bigint` debit/credit balancing, typed errors, immutable output and deterministic posting line numbers |
 
 ### Ledger database architecture
 
@@ -145,6 +146,35 @@ erDiagram
 ```
 
 > Diagram is a conceptual summary. The actual migration includes composite tenant/currency foreign keys, unique keys, check constraints, indexes, and PostgreSQL triggers. [Detailed ledger persistence design](docs/architecture/ledger-persistence.md).
+
+### Ledger domain validation — implemented
+
+The Ledger module exposes `prepareBalancedJournal()`, a pure
+TypeScript domain operation that prepares balanced double-entry
+journal drafts without database or network access.
+
+Implemented protections:
+
+- At least two journal postings.
+- At least one `DEBIT` and one `CREDIT`.
+- Positive `bigint` amounts within the supported PostgreSQL
+  signed `BIGINT` range, validated through `@fintech/money`.
+- Exact debit/credit equality without floating-point arithmetic.
+- Arbitrarily large `bigint` aggregate totals.
+- Runtime checks for invalid posting values.
+- Deterministic, sequential posting line numbers.
+- Immutable prepared journal results.
+- Typed `InvalidJournalDraftError` failure codes.
+
+The prepared journal is not a database-persisted transaction.
+Account ownership, account status, transaction atomicity,
+idempotency and outbox persistence are enforced or implemented
+at other layers and milestones.
+
+**Test coverage:** 27 unit tests and 7 property-based tests,
+including 2,100 generated property-test cases.
+
+See [ADR-014: Journal domain validation](docs/adr/ADR-014-journal-domain-validation.md).
 
 ### Financial invariants verified against PostgreSQL
 
@@ -198,6 +228,7 @@ The outbox step is **future scope**; when implemented it must execute before com
 
 - [ADR-012: PostgreSQL ledger persistence and financial invariants](docs/adr/ADR-012-ledger-persistence-and-invariants.md)
 - [ADR-013: UUIDv7 identifier policy](docs/adr/ADR-013-uuidv7-identifier-strategy.md)
+- [ADR-014: Pure journal domain validation](docs/adr/ADR-014-journal-domain-validation.md)
 
 ### Testing and reproducibility
 
@@ -208,17 +239,21 @@ pnpm check
 pnpm build
 pnpm --filter @fintech/database test:integration
 pnpm --filter @fintech/database migrate:status
+pnpm --filter @fintech/ledger test
 ```
 
 Latest **locally reported** results after the ledger migration:
 
-| Verification                        | Result                                                         |
-| ----------------------------------- | -------------------------------------------------------------- |
-| Money unit/property tests           | 97 passed                                                      |
-| Database unit tests                 | 100 passed                                                     |
-| PostgreSQL integration tests        | 32 passed: 4 connectivity + 5 migration + 23 ledger invariants |
-| Total                               | **229 passed**                                                 |
-| TypeScript, ESLint, Prettier, build | Passed                                                         |
+| Verification                               | Result                                         |
+| ------------------------------------------ | ---------------------------------------------- |
+| Money unit/property tests                  | 97 passed                                      |
+| Database unit tests                        | 100 passed                                     |
+| Ledger domain unit tests                   | 27 passed                                      |
+| Ledger domain property tests               | 7 passed                                       |
+| PostgreSQL integration tests               | 32 passed in previous database integration run |
+| Unit/property tests total                  | **231 passed**                                 |
+| Combined previously verified test coverage | **263 tests**                                  |
+| TypeScript, ESLint, Prettier, build        | Passed locally                                 |
 
 CI workflows: the existing Validate-and-Build workflow under `.github/workflows/` and `.github/workflows/database-integration.yml`. A previous commit passed both workflows; **the 23 new ledger invariant tests must be verified in CI after this change is pushed** before claiming updated CI coverage.
 
