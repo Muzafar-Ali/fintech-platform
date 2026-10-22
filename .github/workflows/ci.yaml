@@ -43,8 +43,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck, lint, format and test
-        run: pnpm check
-
+      # Build workspace packages before typechecking consumers.
+      # Ledger imports @fintech/money, whose TypeScript declarations
+      # are generated in dist/ during the Money package build.
       - name: Build all workspaces
         run: pnpm build
+
+      # Runs typecheck, ESLint, Prettier and unit/property tests.
+      - name: Typecheck, lint, format and test
+        run: pnpm check
