@@ -6,13 +6,19 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tests/tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --config tests/vitest.config.ts",
+    "test:watch": "vitest --config tests/vitest.config.ts",
+    "test:integration": "vitest run --config tests/vitest.integration.config.ts"
   },
   "dependencies": {
-    "@fintech/money": "workspace:*"
+    "@fintech/money": "workspace:*",
+    "kysely": "^0.29.7",
+    "uuid": "^14.0.3"
   },
   "devDependencies": {
+    "@types/pg": "^8.23.1",
     "fast-check": "4.10.2",
+    "pg": "^8.23.1",
     "vitest": "5.0.3"
   }
 }

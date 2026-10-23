@@ -1,0 +1,68 @@
+name: Ledger Integration
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ledger-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ledger-integration:
+    name: PostgreSQL Ledger Posting Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: fintech_test
+          POSTGRES_PASSWORD: fintech_test_password
+          POSTGRES_DB: fintech_ledger_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fintech_test -d fintech_ledger_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      LEDGER_TEST_DATABASE_URL: postgresql://fintech_test:fintech_test_password@127.0.0.1:5432/fintech_ledger_test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspaces and migration files
+        run: pnpm build
+
+      - name: Run Ledger PostgreSQL integration tests
+        run: pnpm --filter @fintech/ledger test:integration

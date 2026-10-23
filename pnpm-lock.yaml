@@ -206,10 +206,22 @@ importers:
       '@fintech/money':
         specifier: workspace:*
         version: link:../../packages/money
+      kysely:
+        specifier: ^0.29.7
+        version: 0.29.7
+      uuid:
+        specifier: ^14.0.3
+        version: 14.0.3
     devDependencies:
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
       fast-check:
         specifier: 4.10.2
         version: 4.10.2
+      pg:
+        specifier: ^8.23.1
+        version: 8.23.1
       vitest:
         specifier: 5.0.3
         version: 5.0.3(@types/node@24.19.1)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@24.19.1)(jiti@2.7.0))

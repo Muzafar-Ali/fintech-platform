@@ -192,3 +192,40 @@ balance. PostgreSQL revalidates journal postings independently.
 
 Architecture decision:
 [ADR-014: Journal domain validation](../adr/ADR-014-journal-domain-validation.md).
+
+## Atomic application-level posting
+
+Task 13D implements internal journal posting through a
+dedicated application service and repository abstraction.
+
+### Components
+
+- `createPostJournalService()` — validates and orchestrates commands.
+- `LedgerPostingRepository` — application persistence contract.
+- `KyselyLedgerPostingRepository` — transactional PostgreSQL adapter.
+- `prepareBalancedJournal()` — existing financial domain validation.
+- PostgreSQL ledger triggers — independent persistence integrity.
+
+### Transaction boundary
+
+All account checks, journal insertion, posting insertion and
+journal finalization occur inside one database transaction.
+
+The operation returns success only after a successful commit.
+
+A failed commit causes rollback, including when a deferred
+financial constraint rejects the transaction.
+
+### Verified failure scenarios
+
+The integration suite verifies missing accounts, suspended
+accounts, cross-tenant access, incompatible currency,
+commit-time financial imbalance and concurrent status changes.
+
+### Remaining boundaries
+
+The service is internal-only. Authentication/authorization,
+idempotency, transactional outbox delivery, reversal processing
+and overspending prevention are not yet implemented.
+
+See [ADR-015](../adr/ADR-015-atomic-ledger-posting.md).
