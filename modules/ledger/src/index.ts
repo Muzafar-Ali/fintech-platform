@@ -23,3 +23,4 @@ export type {
   PersistPreparedJournalInput,
   PostedJournalResult,
 } from './application/ports/ledger-posting-repository.js';
+export { IdempotencyConflictError } from './application/errors/idempotency-conflict.error.js';

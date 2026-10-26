@@ -1,5 +1,4 @@
 import { sql, type Kysely } from 'kysely';
-
 import type { DatabaseSchema } from '../database.js';
 
 /**

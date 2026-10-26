@@ -1,7 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { InvalidJournalDraftError, prepareBalancedJournal } from '../src/index.js';
-import type { JournalPostingInput, PrepareJournalInput } from '../src/index.js';
+import { InvalidJournalDraftError, prepareBalancedJournal } from '../../src/index.js';
+import type { JournalPostingInput, PrepareJournalInput } from '../../src/index.js';
 
 const MAX_INT64 = 9223372036854775807n;
 

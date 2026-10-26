@@ -1,14 +1,14 @@
 import { v7 as uuidv7 } from 'uuid';
 import { describe, expect, it, vi } from 'vitest';
-import { InvalidJournalDraftError } from '../src/domain/errors/invalid-journal-draft.error.js';
-import { InvalidPostJournalCommandError } from '../src/application/errors/invalid-post-journal-command.error.js';
-import { createPostJournalService } from '../src/application/services/post-journal.js';
+import { InvalidJournalDraftError } from '../../src/domain/errors/invalid-journal-draft.error.js';
+import { InvalidPostJournalCommandError } from '../../src/application/errors/invalid-post-journal-command.error.js';
+import { createPostJournalService } from '../../src/application/services/post-journal.js';
 import type {
   LedgerPostingRepository,
   PersistPreparedJournalInput,
   PostedJournalResult,
-} from '../src/application/ports/ledger-posting-repository.js';
-import type { PostJournalCommand } from '../src/application/services/post-journal.js';
+} from '../../src/application/ports/ledger-posting-repository.js';
+import type { PostJournalCommand } from '../../src/application/services/post-journal.js';
 
 const tenantId = uuidv7();
 const debitAccountId = uuidv7();
@@ -21,6 +21,7 @@ function command(overrides: Partial<PostJournalCommand> = {}): PostJournalComman
     correlationId,
     currency: 'PKR',
     transactionType: 'TRANSFER',
+    idempotencyKey: 'unit-transfer-001',
     postings: [
       {
         accountId: debitAccountId,

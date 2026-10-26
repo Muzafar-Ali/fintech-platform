@@ -1,11 +1,11 @@
 import { MoneyAmountOutOfRangeError } from '@fintech/money';
 import { describe, expect, it } from 'vitest';
-import { InvalidJournalDraftError, prepareBalancedJournal } from '../src/index.js';
+import { InvalidJournalDraftError, prepareBalancedJournal } from '../../src/index.js';
 import type {
   JournalPostingInput,
   JournalValidationCode,
   PrepareJournalInput,
-} from '../src/index.js';
+} from '../../src/index.js';
 
 const TENANT_ID = 'tenant-001';
 const CASH_ACCOUNT = 'cash-account';

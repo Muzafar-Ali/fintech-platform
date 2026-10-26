@@ -229,3 +229,82 @@ idempotency, transactional outbox delivery, reversal processing
 and overspending prevention are not yet implemented.
 
 See [ADR-015](../adr/ADR-015-atomic-ledger-posting.md).
+
+## Durable command idempotency
+
+Task 13E extends atomic journal posting with durable
+PostgreSQL-backed financial command idempotency.
+
+### Application components
+
+- `createPostJournalService()` validates the financial command
+  and requires an idempotency key.
+- `fingerprintPostJournal()` calculates a deterministic SHA-256
+  fingerprint of financial intent.
+- `LedgerPostingRepository` defines the application persistence
+  contract.
+- `KyselyLedgerPostingRepository` manages idempotency claim
+  coordination and atomic journal persistence.
+- `IdempotencyConflictError` represents reuse of an existing
+  key with a different financial payload.
+
+### Database storage
+
+Migration `20261025_000003_create_ledger_idempotency_records.ts`
+creates `ledger.idempotency_records`.
+
+The uniqueness boundary is:
+
+`tenant_id + operation_type + idempotency_key`
+
+A committed idempotency record references one posted journal.
+
+PostgreSQL constraints and triggers independently protect
+the committed idempotency history.
+
+### Transaction guarantees
+
+The idempotency claim and all journal/posting writes share
+one PostgreSQL transaction.
+
+A commit-time failure rolls back the entire operation.
+
+Concurrent identical requests are coordinated through the
+unique key. Under PostgreSQL READ COMMITTED isolation, a
+retry may wait for the original claim to commit, then read
+and replay the original journal result.
+
+The repository does not overwrite the original journal on
+replay.
+
+### Fingerprint semantics
+
+The request fingerprint includes the tenant, currency,
+transaction type and ordered financial postings.
+
+Amounts are represented using canonical decimal strings
+derived from bigint values.
+
+Correlation ID is excluded because it represents tracing
+metadata rather than financial command identity.
+
+### Verification
+
+16 PostgreSQL Ledger integration tests passed locally,
+covering atomic posting, failure rollback, concurrency,
+idempotent replay, conflict detection and immutable claims.
+
+### Remaining boundaries
+
+The internal service does not yet provide:
+
+- Authenticated tenant-authorized HTTP endpoints.
+- Transactional outbox delivery.
+- Financial reversal processing.
+- Available-balance and overspending safeguards.
+- End-to-end exactly-once external payment guarantees.
+- Idempotency history retention and archival policy.
+
+### Related decision
+
+[ADR-016: Financial Command Idempotency](../adr/ADR-016-financial-command-idempotency.md).

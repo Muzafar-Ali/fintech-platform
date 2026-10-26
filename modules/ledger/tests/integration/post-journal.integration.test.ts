@@ -11,6 +11,7 @@ import { createPostJournalService } from '../../src/application/services/post-jo
 import type { PostJournalCommand } from '../../src/application/services/post-journal.js';
 import { KyselyLedgerPostingRepository } from '../../src/infrastructure/repositories/kysely-ledger-posting.repository.js';
 import type { PreparedJournal } from '../../src/domain/value-objects/journal-draft.js';
+import { IdempotencyConflictError } from '../../src/application/errors/idempotency-conflict.error.js';
 
 /**
  * This suite MUST NEVER run against fintech_local
@@ -70,6 +71,7 @@ function command(overrides: Partial<PostJournalCommand> = {}): PostJournalComman
     currency: 'PKR',
     transactionType: 'TRANSFER',
     correlationId: uuidv7(),
+    idempotencyKey: uuidv7(),
     postings: [
       {
         accountId: debitAccountId,
@@ -397,8 +399,10 @@ describe('Atomic journal posting against PostgreSQL', () => {
   it('rolls back all rows if deferred balance trigger rejects COMMIT', async () => {
     const before = await journalCount(tenantId);
 
+    const idempotencyKey = uuidv7();
+
     // Deliberately bypass application/domain validation.
-    // This verifies the independent PostgreSQL safety layer.
+    // This verifies PostgreSQL's independent financial integrity.
     const malformedDraft: PreparedJournal = {
       tenantId,
       currency: 'PKR',
@@ -425,10 +429,26 @@ describe('Atomic journal posting against PostgreSQL', () => {
         draft: malformedDraft,
         transactionType: 'TRANSFER',
         correlationId: uuidv7(),
-      }),
-    ).rejects.toThrow();
 
+        // Required by the Task 13E repository contract.
+        idempotencyKey,
+        requestHash: '0'.repeat(64),
+      }),
+    ).rejects.toThrow('Posted journal must contain balanced debit and credit entries');
+
+    // Verify the failed transaction committed no journal.
     expect(await journalCount(tenantId)).toBe(before);
+
+    // Verify that the idempotency claim also rolled back.
+    const records = await sql<{ count: string }>`
+    SELECT COUNT(*)::text AS count
+    FROM ledger.idempotency_records
+    WHERE tenant_id = ${tenantId}::uuid
+      AND operation_type = 'POST_JOURNAL'
+      AND idempotency_key = ${idempotencyKey}
+  `.execute(testDatabase());
+
+    expect(records.rows[0]?.count).toBe('0');
   });
 
   it('does not post against an account being suspended concurrently', async () => {
@@ -473,13 +493,150 @@ describe('Atomic journal posting against PostgreSQL', () => {
     expect(await journalCount(tenantId)).toBe('2');
   });
 
-  it('allows distinct valid journals without pretending retries are idempotent', async () => {
+  it('replays the original journal for the same command', async () => {
     const input = command();
 
     const first = await postJournal(input);
     const second = await postJournal(input);
 
+    expect(second).toEqual(first);
+    expect(second.journalId).toBe(first.journalId);
+    expect(await journalCount(tenantId)).toBe('1');
+  });
+
+  it('rejects the same key with a different financial payload', async () => {
+    const input = command();
+
+    const original = await postJournal(input);
+
+    await expect(
+      postJournal({
+        ...input,
+        postings: input.postings.map((posting) => ({
+          ...posting,
+          amountMinor: posting.amountMinor + 1n,
+        })),
+      }),
+    ).rejects.toBeInstanceOf(IdempotencyConflictError);
+
+    expect(await journalCount(tenantId)).toBe('1');
+
+    const replay = await postJournal(input);
+    expect(replay.journalId).toBe(original.journalId);
+  });
+
+  it('coordinates concurrent requests with the same key', async () => {
+    const input = command();
+
+    const [first, second] = await Promise.all([postJournal(input), postJournal(input)]);
+
+    expect(first.journalId).toBe(second.journalId);
+    expect(first).toEqual(second);
+    expect(await journalCount(tenantId)).toBe('1');
+  });
+
+  it('returns the original correlation ID on replay', async () => {
+    const input = command();
+
+    const first = await postJournal(input);
+
+    const second = await postJournal({
+      ...input,
+      correlationId: uuidv7(),
+    });
+
+    expect(second.journalId).toBe(first.journalId);
+    expect(second.correlationId).toBe(input.correlationId);
+    expect(second.postedAt).toEqual(first.postedAt);
+
+    expect(await journalCount(tenantId)).toBe('1');
+  });
+
+  it('allows different idempotency keys to post separate journals', async () => {
+    const input = command();
+
+    const first = await postJournal(input);
+
+    const second = await postJournal({
+      ...input,
+      idempotencyKey: uuidv7(),
+    });
+
     expect(first.journalId).not.toBe(second.journalId);
     expect(await journalCount(tenantId)).toBe('2');
+  });
+
+  it('rolls back the idempotency claim after a failed financial commit', async () => {
+    const idempotencyKey = uuidv7();
+
+    const malformedDraft: PreparedJournal = {
+      tenantId,
+      currency: 'PKR',
+      debitTotalMinor: 100n,
+      creditTotalMinor: 99n,
+      postings: [
+        {
+          lineNo: 1,
+          accountId: debitAccountId,
+          side: 'DEBIT',
+          amountMinor: 100n,
+        },
+        {
+          lineNo: 2,
+          accountId: creditAccountId,
+          side: 'CREDIT',
+          amountMinor: 99n,
+        },
+      ],
+    };
+
+    await expect(
+      repository.postPreparedJournal({
+        draft: malformedDraft,
+        transactionType: 'TRANSFER',
+        correlationId: uuidv7(),
+        idempotencyKey,
+        requestHash: '0'.repeat(64),
+      }),
+    ).rejects.toThrow();
+
+    const claims = await sql<{ count: string }>`
+    SELECT count(*)::text AS count
+    FROM ledger.idempotency_records
+    WHERE tenant_id = ${tenantId}::uuid
+      AND operation_type = 'POST_JOURNAL'
+      AND idempotency_key = ${idempotencyKey}
+  `.execute(testDatabase());
+
+    expect(claims.rows[0]?.count).toBe('0');
+    expect(await journalCount(tenantId)).toBe('0');
+
+    // The failed claim must not poison the key.
+    const result = await postJournal(command({ idempotencyKey }));
+
+    expect(result.status).toBe('POSTED');
+    expect(await journalCount(tenantId)).toBe('1');
+  });
+
+  it('prevents mutation of a committed idempotency record', async () => {
+    const input = command();
+
+    await postJournal(input);
+
+    await expect(
+      sql`
+      UPDATE ledger.idempotency_records
+      SET request_hash = ${'f'.repeat(64)}
+      WHERE tenant_id = ${tenantId}::uuid
+        AND operation_type = 'POST_JOURNAL'
+        AND idempotency_key = ${input.idempotencyKey}
+    `.execute(testDatabase()),
+    ).rejects.toThrow();
+
+    // The failed UPDATE must not corrupt replay behavior.
+    const replay = await postJournal(input);
+
+    expect(replay.status).toBe('POSTED');
+    expect(await journalCount(tenantId)).toBe('1');
   });
 });

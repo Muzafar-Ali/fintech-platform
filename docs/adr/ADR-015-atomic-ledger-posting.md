@@ -231,3 +231,13 @@ separately through the repository quality gate.
 - [ADR-012: Ledger persistence](ADR-012-ledger-persistence-and-invariants.md)
 - [ADR-013: UUIDv7 identifiers](ADR-013-uuidv7-identifier-strategy.md)
 - [ADR-014: Domain journal validation](ADR-014-journal-domain-validation.md)
+
+## Subsequent evolution
+
+On 2026-10-26, ADR-016 introduced durable command idempotency
+and replaced the initial non-idempotent retry behavior.
+
+The atomic journal posting and database transaction decisions
+of this ADR remain in effect.
+
+See [ADR-016: Financial Command Idempotency](ADR-016-financial-command-idempotency.md).

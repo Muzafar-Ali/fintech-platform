@@ -1,112 +1,99 @@
 # Fintech Money Movement Platform
 
-A ledger-first fintech infrastructure platform built with TypeScript,
-Node.js, Express.js, PostgreSQL and Kysely.
+A ledger-first fintech infrastructure platform built with **TypeScript, Node.js, Express.js, PostgreSQL and Kysely**.
 
-The project focuses on financial correctness, transaction integrity,
-auditability, concurrency safety and resilient money-movement
-infrastructure.
+The project focuses on financial correctness, transaction integrity, auditability, concurrency safety and resilient money-movement infrastructure.
 
-> **Development status:** Financial primitives and the PostgreSQL
-> ledger persistence foundation are implemented. The application-level
-> ledger engine, wallets, payments and settlement workflows remain
-> under development. The platform currently uses simulated funds.
+> **Development status (Task 13E):** Exact monetary primitives, ledger domain validation, PostgreSQL-enforced double-entry accounting, **internal atomic journal posting**, and **durable command-level idempotency** are implemented and locally tested. Authenticated financial APIs, reversal processing, balance/overspending controls, transactional outbox, and observability infrastructure remain under development. This project uses **simulated financial data**, not real customer funds.
 
 ## Architecture approach
 
-- Modular monolith with explicit domain boundaries.
-- PostgreSQL as the authoritative financial data store.
-- Exact monetary representation using `bigint` minor units.
-- Versioned Kysely migrations with database-enforced financial invariants.
-- Transactional outbox and asynchronous workers planned for later milestones.
-- Strong unit, property, integration and concurrency testing.
+- **Modular monolith** with explicit domain, application, and infrastructure boundaries.
+- **PostgreSQL** as the authoritative financial system of record.
+- **Exact money representation** using TypeScript `bigint` minor units and canonical decimal-string serialization.
+- **Defense in depth:** pure TypeScript validation plus independent PostgreSQL constraints, triggers, and commit-time checks.
+- **Transaction-scoped writes:** financial journal, postings, and idempotency claim commit or roll back together.
+- **Future asynchronous infrastructure:** transactional outbox and workers; neither a cache nor a message broker is accounting truth.
+- **Verification:** unit, property-based, real PostgreSQL integration, failure, and concurrency testing.
 
 ## Technology stack
 
-| Area                     | Technology           |
-| ------------------------ | -------------------- |
-| Language                 | TypeScript / Node.js |
-| HTTP framework           | Express.js           |
-| Database                 | PostgreSQL 17        |
-| Query builder            | Kysely               |
-| Validation               | Zod                  |
-| Financial representation | BigInt minor units   |
-| Testing                  | Vitest, fast-check   |
-| Infrastructure           | Docker Compose       |
-| CI/CD                    | GitHub Actions       |
+| Area                         | Technology                                                                 |
+| ---------------------------- | -------------------------------------------------------------------------- |
+| Language/runtime             | TypeScript / Node.js 24                                                    |
+| HTTP foundation              | Express.js                                                                 |
+| Database                     | PostgreSQL 17                                                              |
+| Query builder / migrations   | Kysely                                                                     |
+| Configuration and validation | Zod                                                                        |
+| Monetary representation      | `bigint` minor units                                                       |
+| Testing                      | Vitest, fast-check, PostgreSQL integration tests                           |
+| Local infrastructure         | Docker Compose                                                             |
+| CI/CD                        | GitHub Actions                                                             |
+| Observability                | **Planned mandatory milestone:** OpenTelemetry, Prometheus, Tempo, Grafana |
 
 ## Repository structure
 
 ```text
 apps/
-  api/             Express API foundation
-  worker/          Background worker foundation
-
+  api/                 Express API foundation
+  worker/              Background worker foundation
 modules/
-  ledger/          Ledger domain/application module
-
+  ledger/              Ledger domain, application service, and persistence adapter
 packages/
-  money/           Exact money representation and arithmetic
-  database/        PostgreSQL, Kysely, migrations and ledger schema
-
+  money/               Exact monetary representation and arithmetic
+  database/            PostgreSQL connections, migrations, and database utilities
 infrastructure/
-  docker/          Local database infrastructure
-
+  docker/              Local PostgreSQL infrastructure
 docs/
-  adr/             Architecture Decision Records
-  architecture/    Technical designs and diagrams
-  runbooks/        Operational procedures
+  adr/                 Architecture Decision Records
+  architecture/        Architecture documents and diagrams
+  runbooks/            Operational procedures
 ```
 
 ## Local development
 
-Requirements: Node.js 24, pnpm and Docker.
+**Requirements:** Node.js 24, pnpm, and Docker.
 
-From the repository root:
+From the repository root (Windows CMD):
 
-```powershell
+```cmd
 pnpm install --frozen-lockfile
-Copy-Item .env.example .env
 ```
 
-Set a local development password in `.env`, then start PostgreSQL:
+If `.env` does not already exist, copy `.env.example` to `.env` and configure local development credentials. **Do not commit `.env`.**
 
-```powershell
+Build the workspaces before running the compiled database migration CLI or typechecking consumers; Ledger imports the compiled declarations from `@fintech/money`:
+
+```cmd
+pnpm build
 docker compose --env-file .env -f infrastructure/docker/compose.yaml up -d postgres
 pnpm --filter @fintech/database migrate:up
-```
-
-Run quality checks:
-
-```powershell
 pnpm check
-pnpm build
-pnpm --filter @fintech/database test:integration
 ```
 
-Integration tests require a running PostgreSQL instance.
+Database integration tests require the appropriate disposable PostgreSQL test database and credentials. Ledger posting integration tests use `LEDGER_TEST_DATABASE_URL` pointing to **`fintech_ledger_test`**, never the development or a production database. For example, in the current CMD terminal:
 
----
+```cmd
+set "LEDGER_TEST_DATABASE_URL=postgresql://YOUR_USER:YOUR_PASSWORD@127.0.0.1:5433/fintech_ledger_test"
+pnpm --filter @fintech/database test:integration
+pnpm --filter @fintech/ledger test:integration
+```
 
-## Ledger persistence — implemented foundation
+The example connection string uses placeholders; keep actual credentials private. Existing test-database setup and guards must be respected.
 
-> **Status:** PostgreSQL ledger schema, constraints, triggers, and migration-based integration tests are implemented and verified locally. The ledger posting application service, externally callable APIs, idempotency service, complete reversal processing, balance queries, and transactional outbox are **not yet implemented**. This project currently operates with development/simulated financial data, not real customer funds.
+## Implemented capabilities
 
-### Implemented capabilities
-
-| Area                                | Current implementation                                                                                                                                                                   |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Exact monetary representation       | TypeScript `bigint` minor units; canonical string serialization; validated PostgreSQL signed `BIGINT` mapping                                                                            |
-| Database layer                      | PostgreSQL 17, Kysely connection factory, validated environment configuration with Zod                                                                                                   |
-| Migration lifecycle                 | Versioned migrations, migration history/locking, forward-only CLI (`migrate:status`, `migrate:up`)                                                                                       |
-| Ledger persistence                  | `ledger.accounts`, `ledger.journals`, and `ledger.postings` created by migration `20261021_000002_create_ledger_tables`                                                                  |
-| Journal lifecycle at database level | `PENDING` → `POSTED` or `CANCELLED`; finalized journals cannot be edited or deleted                                                                                                      |
-| Journal financial integrity         | Deferred, commit-time checks: posted journals require at least two postings and equal total debits/credits                                                                               |
-| Account and posting guards          | Positive posting amounts, immutable postings, protected account identity, active-account checks                                                                                          |
-| Tenant/currency isolation           | Composite foreign keys enforce compatible tenant/currency across journal, account, and posting                                                                                           |
-| Reversal references                 | References must identify a posted journal in the same tenant/currency; one reversal reference per original journal                                                                       |
-| Ledger domain validation            | Pure `prepareBalancedJournal()` service with exact `bigint` debit/credit balancing, typed errors, immutable output and deterministic posting line numbers                                |
-| Atomic ledger posting               | Internal application service and Kysely repository implement transaction-scoped journal/posting writes, UUIDv7 identifiers, active-account locking and commit-time database verification |
+| Area                   | Implementation                                                                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Exact money            | `@fintech/money`: `bigint` minor units, canonical serialization, currency validation, signed PostgreSQL `BIGINT` compatibility                          |
+| Database foundation    | PostgreSQL 17, Kysely connection factory, Zod-validated configuration, forward-only migrations                                                          |
+| Ledger schema          | `ledger.accounts`, `ledger.journals`, `ledger.postings`, and `ledger.idempotency_records`                                                               |
+| Domain validation      | Pure `prepareBalancedJournal()` with exact balancing, typed errors, immutable result, and deterministic posting lines                                   |
+| Financial integrity    | Database checks, composite tenant/currency foreign keys, lifecycle guards, immutable posting/history constraints, deferred commit-time balancing        |
+| Atomic journal posting | Internal `createPostJournalService()` and `KyselyLedgerPostingRepository` commit journal and postings in one transaction                                |
+| UUIDv7                 | Journal/posting identifiers generated by the internal posting adapter using UUIDv7                                                                      |
+| Account safety         | Active-account validation and deterministic account lock ordering inside posting transactions                                                           |
+| Durable idempotency    | Tenant/operation/key uniqueness, SHA-256 financial fingerprint, same-key replay, conflict detection, concurrent claim coordination, and atomic rollback |
 
 ### Ledger database architecture
 
@@ -115,6 +102,7 @@ erDiagram
     ACCOUNTS ||--o{ POSTINGS : receives
     JOURNALS ||--o{ POSTINGS : contains
     JOURNALS o|--o| JOURNALS : reversal_reference
+    JOURNALS ||--o| IDEMPOTENCY_RECORDS : command_identity
 
     ACCOUNTS {
         uuid id PK
@@ -144,59 +132,46 @@ erDiagram
         text side
         bigint amount_minor
     }
+    IDEMPOTENCY_RECORDS {
+        uuid tenant_id PK
+        varchar operation_type PK
+        varchar idempotency_key PK
+        varchar request_hash
+        uuid journal_id FK
+        timestamptz created_at
+    }
 ```
 
-> Diagram is a conceptual summary. The actual migration includes composite tenant/currency foreign keys, unique keys, check constraints, indexes, and PostgreSQL triggers. [Detailed ledger persistence design](docs/architecture/ledger-persistence.md).
+_Conceptual ERD only._ The actual migrations include composite foreign keys, unique keys, check constraints, indexes, and PostgreSQL triggers. See the [detailed ledger persistence architecture](docs/architecture/ledger-persistence.md).
 
-### Ledger domain validation — implemented
+### Financial invariants and enforcement
 
-The Ledger module exposes `prepareBalancedJournal()`, a pure
-TypeScript domain operation that prepares balanced double-entry
-journal drafts without database or network access.
+| Invariant                                                                                               | Enforcement                                                     | Verification                      |
+| ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | --------------------------------- |
+| Posted journal contains at least two postings                                                           | Deferred PostgreSQL integrity trigger                           | Integration-tested                |
+| Exact debit total equals credit total                                                                   | Domain `bigint` arithmetic and PostgreSQL `NUMERIC` aggregation | Unit/property + integration tests |
+| Pending/cancelled journals cannot commit postings                                                       | Deferred PostgreSQL trigger                                     | Integration-tested                |
+| Every posting amount is positive and within supported range                                             | Money/domain validation and PostgreSQL `BIGINT`/`CHECK`         | Unit/property + integration tests |
+| Posting journal/account share tenant and currency                                                       | Composite foreign keys and write guards                         | Integration-tested                |
+| Only active accounts accept new postings                                                                | Transactional account checks and PostgreSQL trigger             | Integration-tested                |
+| Posting history and finalized journals are immutable                                                    | PostgreSQL triggers                                             | Integration-tested                |
+| Account identity is immutable; closed accounts cannot reopen                                            | PostgreSQL trigger                                              | Integration-tested                |
+| Reversal reference points to a posted journal in the same tenant/currency; duplicate references blocked | PostgreSQL checks and uniqueness                                | Integration-tested                |
+| Same tenant/operation/idempotency key cannot create two committed command identities                    | PostgreSQL primary key and transaction claim                    | Integration-tested                |
+| Idempotency record cannot commit unless its journal is posted                                           | Deferred trigger and foreign key                                | Integration-tested                |
+| Idempotency records cannot be changed or deleted                                                        | PostgreSQL trigger                                              | Integration-tested                |
 
-Implemented protections:
+These are guarantees within the implemented **internal ledger posting boundary**. They do **not** establish tenant authentication, sufficient available funds, complete reversals, a public posting API, or end-to-end exactly-once external payment processing. PostgreSQL runtime least-privilege roles and operational hardening remain pending.
 
-- At least two journal postings.
-- At least one `DEBIT` and one `CREDIT`.
-- Positive `bigint` amounts within the supported PostgreSQL
-  signed `BIGINT` range, validated through `@fintech/money`.
-- Exact debit/credit equality without floating-point arithmetic.
-- Arbitrarily large `bigint` aggregate totals.
-- Runtime checks for invalid posting values.
-- Deterministic, sequential posting line numbers.
-- Immutable prepared journal results.
-- Typed `InvalidJournalDraftError` failure codes.
+### Ledger domain validation
 
-The prepared journal is not a database-persisted transaction.
-Account ownership, account status, transaction atomicity,
-idempotency and outbox persistence are enforced or implemented
-at other layers and milestones.
+`prepareBalancedJournal()` creates an immutable, validated draft **without** database or network calls. It checks positive amounts, the presence of at least one debit and credit, minimum posting count, exact balancing, and generates one-based posting line numbers.
 
-**Test coverage:** 27 unit tests and 7 property-based tests,
-including 2,100 generated property-test cases.
+The domain validates financial structure; it does **not** prove account existence, tenant authorization, or persistence success. Those concerns belong to the application, trusted caller, and PostgreSQL layers.
 
-See [ADR-014: Journal domain validation](docs/adr/ADR-014-journal-domain-validation.md).
+**Evidence:** 27 domain unit tests and 7 property-based tests, configured for 2,100 generated property cases. See [ADR-014](docs/adr/ADR-014-journal-domain-validation.md).
 
-### Financial invariants verified against PostgreSQL
-
-| Invariant                                                                   | Enforcement                               | Local verification |
-| --------------------------------------------------------------------------- | ----------------------------------------- | ------------------ |
-| Minimum two postings in a posted journal                                    | Deferred constraint trigger               | Verified           |
-| Debit total = credit total for each posted journal                          | Deferred trigger; exact SQL aggregation   | Verified           |
-| Non-posted journals cannot commit postings                                  | Deferred trigger                          | Verified           |
-| Posting amount must be positive                                             | `CHECK (amount_minor > 0)`                | Verified           |
-| Journal/account tenant and currency must match posting                      | Composite foreign keys and guarded writes | Verified           |
-| Only active accounts accept postings                                        | PostgreSQL posting trigger                | Verified           |
-| Posting rows cannot be updated or deleted                                   | PostgreSQL trigger                        | Verified           |
-| Finalized journals cannot be updated or deleted                             | PostgreSQL trigger                        | Verified           |
-| Account identity and currency cannot change                                 | PostgreSQL trigger                        | Verified           |
-| Closed accounts cannot reopen                                               | PostgreSQL trigger                        | Verified           |
-| Reversal reference must point to posted journal in matching tenant/currency | PostgreSQL trigger and foreign key        | Verified           |
-| Duplicate reversal references blocked                                       | Unique constraint                         | Verified           |
-
-**Important scope distinction:** These are **database-level** guarantees tested using direct SQL. They do not yet imply that an application-level ledger posting API, reversal service, or outbox is shipped. A full reversal's inverse amounts, idempotent command replay, and available-balance/overspending enforcement remain future milestones.
-
-### Journal lifecycle (database-enforced)
+### Journal lifecycle
 
 ```mermaid
 stateDiagram-v2
@@ -207,102 +182,108 @@ stateDiagram-v2
     CANCELLED --> [*]: immutable final state
 ```
 
+New journals begin in `PENDING` state. On posting, PostgreSQL populates the finalization timestamps and independently verifies commit-time invariants.
+
 ### Atomic journal posting — implemented internal service
 
-The Ledger module provides an internal `createPostJournalService()`
-application service and a `KyselyLedgerPostingRepository`.
-
-The application service validates journal instructions through the
-existing domain model and delegates persistence to the repository.
-
-The repository performs the following operations in one PostgreSQL
-transaction:
+The application service `createPostJournalService()` validates the command and delegates persistence through `LedgerPostingRepository` to `KyselyLedgerPostingRepository`.
 
 ```mermaid
 flowchart TD
-    A[Internal postJournal command] --> B[Domain journal validation]
-    B --> C[Application UUID and transaction type validation]
-    C --> D[BEGIN PostgreSQL transaction]
-    D --> E[Lock and verify active accounts in deterministic order]
-    E --> F[Insert PENDING journal]
-    F --> G[Insert debit and credit postings]
-    G --> H[Update journal to POSTED]
-    H --> I[Deferred PostgreSQL integrity checks]
-    I -->|Valid| J[COMMIT and return result]
-    I -->|Invalid| K[ROLLBACK and propagate error]
+    A[Internal postJournal command] --> B[Prepare and validate balanced journal]
+    B --> C[Validate UUIDs, transaction type, and idempotency key]
+    C --> D[Create financial request fingerprint]
+    D --> E[BEGIN PostgreSQL transaction]
+    E --> F{Idempotency claim is new?}
+    F -->|Yes| G[Lock and verify active accounts in ID order]
+    G --> H[Insert PENDING journal and postings]
+    H --> I[Mark journal POSTED]
+    I --> J[Deferred integrity verification at COMMIT]
+    J -->|Valid| K[COMMIT and return posted result]
+    J -->|Invalid| L[ROLLBACK claim, journal, and postings]
+    F -->|No| M{Same financial fingerprint?}
+    M -->|Yes| N[Replay original committed result]
+    M -->|No| O[Reject idempotency conflict]
 ```
 
-#### Implemented guarantees
+Journal and posting identifiers use UUIDv7. Account checks and locks are transaction-scoped. Database failures propagate to callers; a successful result is returned only after the transaction commits. Account lock ordering reduces (but does not eliminate) deadlock risk.
 
-- Journal and postings are committed atomically.
-- Individual journal/posting identifiers are generated using UUIDv7.
-- Account availability is verified within the transaction.
-- Accounts are locked in deterministic identifier order.
-- The database independently enforces tenant/currency containment.
-- The journal begins as `PENDING` and transitions to `POSTED`.
-- PostgreSQL sets the posting timestamps.
-- Deferred financial integrity checks execute at commit.
-- Database failure causes transaction rollback.
-- Persistence errors propagate to the application caller.
+**Evidence:** Atomic posting, failed-commit rollback, account-state conflicts, cross-tenant/currency rejection, and concurrent posting are covered by PostgreSQL integration tests. See [ADR-015](docs/adr/ADR-015-atomic-ledger-posting.md).
 
-These guarantees are supported by 10 PostgreSQL integration tests.
+### Durable financial command idempotency — implemented
 
-#### Important limitations
+Every internal posting command includes an `idempotencyKey`. The application calculates a versioned SHA-256 fingerprint over **tenant, currency, transaction type, and ordered financial postings**, using exact decimal-string amounts. The correlation ID is **excluded**, because it represents tracing metadata rather than financial command identity.
 
-- Posting is currently an internal application operation, not a public API.
-- The service does not independently authenticate or authorize tenants.
-- Repeated valid commands can create separate journals.
-- Idempotency records and request-hash conflict checks are not implemented.
-- Transactional outbox and reliable event delivery are not implemented.
-- Reversal processing and account balance/overspending enforcement remain pending.
+PostgreSQL enforces the unique command scope `(tenant_id, operation_type, idempotency_key)`. The idempotency claim and financial writes share one transaction.
 
-The platform must not expose this operation for external money movement
-until the relevant retry, authorization and operational safeguards exist.
+| Scenario                           | Actual behavior                                               |
+| ---------------------------------- | ------------------------------------------------------------- |
+| New key                            | Create one posted journal                                     |
+| Same key, same financial intent    | Replay original posted result; no additional journal          |
+| Same key, changed financial intent | Reject with `IdempotencyConflictError`                        |
+| Concurrent same-key requests       | Coordinate through PostgreSQL uniqueness; one journal commits |
+| Failed posting transaction         | Roll back claim, journal, and postings                        |
+| Different key                      | May represent a separate financial operation                  |
 
-See [ADR-015: Atomic Ledger Posting](docs/adr/ADR-015-atomic-ledger-posting.md).
+Replay returns the **original** journal ID, original correlation ID, posting timestamp, and other persisted result fields. The current protocol targets PostgreSQL `READ COMMITTED` isolation.
 
-### Engineering decisions
+Idempotency is limited to the same tenant/operation/key: two distinct keys can still create two different journals. It does not authorize tenants or provide end-to-end exactly-once external payment execution.
+
+**Evidence:** 16 Ledger PostgreSQL integration tests passed locally, including same-key replay, changed-payload conflict, simultaneous retries, immutable claims, and transaction rollback. See [ADR-016](docs/adr/ADR-016-financial-command-idempotency.md).
+
+## Testing and reproducibility
+
+Latest **locally reported** results after Task 13E:
+
+| Verification                                            |                                                           Result |
+| ------------------------------------------------------- | ---------------------------------------------------------------: |
+| Money unit/property tests                               |                                                        97 passed |
+| Database unit tests                                     |                                                       100 passed |
+| Ledger domain/application unit/property tests           |                                                        51 passed |
+| PostgreSQL database integration tests                   |                                                        32 passed |
+| PostgreSQL ledger posting/idempotency integration tests |                                                        16 passed |
+| **Combined locally verified test cases**                |                                                          **296** |
+| TypeScript, ESLint, Prettier, and builds                |                                                   Passed locally |
+| Updated Task 13E GitHub Actions                         | **Verify after push; not yet confirmed in this README revision** |
+
+The combined total aggregates separately executed suites; it does not represent one single test-run output.
+
+From the repository root:
+
+```cmd
+pnpm build
+pnpm check
+pnpm --filter @fintech/ledger test
+pnpm --filter @fintech/database test:integration
+pnpm --filter @fintech/ledger test:integration
+pnpm --filter @fintech/database migrate:status
+```
+
+Integration commands require their configured, disposable PostgreSQL test databases. The Ledger integration suite requires `LEDGER_TEST_DATABASE_URL`; its database-name safety guard must not be bypassed.
+
+GitHub Actions workflows cover repository validation/build, database integration, and Ledger integration. Verify all relevant updated workflows are green for the Task 13E commit before claiming new CI coverage.
+
+## Engineering decisions
 
 - [ADR-012: PostgreSQL ledger persistence and financial invariants](docs/adr/ADR-012-ledger-persistence-and-invariants.md)
-- [ADR-013: UUIDv7 identifier policy](docs/adr/ADR-013-uuidv7-identifier-strategy.md)
+- [ADR-013: UUIDv7 identifier strategy](docs/adr/ADR-013-uuidv7-identifier-strategy.md)
 - [ADR-014: Pure journal domain validation](docs/adr/ADR-014-journal-domain-validation.md)
-- [ADR-015: Atomic Ledger Posting](docs/adr/ADR-015-atomic-ledger-posting.md)
+- [ADR-015: Atomic ledger posting](docs/adr/ADR-015-atomic-ledger-posting.md)
+- [ADR-016: Durable financial command idempotency](docs/adr/ADR-016-financial-command-idempotency.md)
 
-### Testing and reproducibility
+See [`docs/architecture/ledger-persistence.md`](docs/architecture/ledger-persistence.md) for detailed architectural boundaries and transaction design.
 
-Commands run from repository root (PostgreSQL must be running for integration tests):
+## Known limitations / next milestones
 
-```powershell
-pnpm check
-pnpm build
-pnpm --filter @fintech/database test:integration
-pnpm --filter @fintech/database migrate:status
-pnpm --filter @fintech/ledger test
-```
+1. **Authentication and tenant authorization:** Ledger posting currently accepts validated tenant identifiers but does not authenticate or authorize callers.
+2. **Public HTTP APIs:** Authenticated financial ledger endpoints, external request contracts, and public error mapping are not implemented.
+3. **Financial reversals:** Reversal references are constrained in PostgreSQL; complete inverse-posting reversal processing is pending.
+4. **Balance and spending controls:** Derived balances, available-balance queries, holds, and concurrent overspending prevention are pending. A balanced journal does **not** establish sufficient funds.
+5. **Transactional outbox and workers:** Atomic event records, reliable publishing, retry behavior, and end-to-end event delivery remain pending.
+6. **Observability (mandatory):** OpenTelemetry SDK, Prometheus metrics, distributed traces, Grafana/Tempo, and trace/log correlation must be implemented; future API → Ledger → PostgreSQL/outbox → worker context propagation is part of the roadmap.
+7. **Operational hardening:** Runtime least-privilege database roles, deployment, backup/recovery, and failure-response procedures are pending.
+8. **Idempotency operations:** Same-key replay and conflict checks **are implemented**. Retention/archival, broader business-action deduplication, and other isolation-level behavior require additional design and testing.
+9. **External payment execution:** No end-to-end exactly-once guarantee across payment processors, no licensed custody, and no live-money processing.
+10. **Identifier policy:** Application-generated journal and posting IDs use UUIDv7, but PostgreSQL `UUID` columns do not universally enforce UUIDv7 for all records.
 
-Latest **locally reported** results after the ledger migration:
-
-| Verification                                      | Result                    |
-| ------------------------------------------------- | ------------------------- |
-| Money unit/property tests                         | 97 passed                 |
-| Database unit tests                               | 100 passed                |
-| Ledger domain and application unit/property tests | 44 passed                 |
-| PostgreSQL database integration tests             | 32 previously passed      |
-| PostgreSQL ledger posting integration tests       | 10 passed                 |
-| Unit/property total                               | **241 passed**            |
-| Combined known test count                         | **283**                   |
-| TypeScript, ESLint, Prettier, build               | Previously passed locally |
-| Updated Task 13D CI                               | Pending verification      |
-
-CI workflows: the existing Validate-and-Build workflow under `.github/workflows/` and `.github/workflows/database-integration.yml`. A previous commit passed both workflows; **the 23 new ledger invariant tests must be verified in CI after this change is pushed** before claiming updated CI coverage.
-
-### Known limitations / next milestones
-
-1. No application-level ledger account creation or atomic journal posting service yet.
-2. No HTTP ledger endpoints, tenant authentication/authorization, or validated API contracts yet.
-3. Reversal **references** are constrained, but exact inverse financial postings and reversal service are not implemented.
-4. Idempotency records, request-hash conflict detection, transactional outbox, and async event delivery are not implemented.
-5. Account balances, holds, availability and concurrent overspend protection are not implemented.
-6. Database runtime least-privilege role and deployment/operational hardening are pending; local development credentials have elevated privileges.
-7. `UUID` columns accept compatible UUID values generally; UUIDv7 is the chosen policy for new platform-generated IDs, not yet a universal database-enforced rule.
-8. No live-money, licensed custody, or regulated processing claims are made.
+**This is a development-stage financial infrastructure platform using simulated data, not a fully deployed or regulated money-processing system.**
