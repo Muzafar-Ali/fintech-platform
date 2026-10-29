@@ -2,6 +2,8 @@ import { validate as isUuid } from 'uuid';
 import { prepareBalancedJournal } from '../../domain/services/prepare-balanced-journal.js';
 import { InvalidPostJournalCommandError } from '../errors/invalid-post-journal-command.error.js';
 import { fingerprintPostJournal } from './fingerprint-post-journal.js';
+import { traceOperation } from '@fintech/observability';
+
 import type { PrepareJournalInput } from '../../domain/value-objects/journal-draft.js';
 import type {
   LedgerPostingRepository,
@@ -23,61 +25,63 @@ function isValidIdempotencyKey(value: unknown): value is string {
 }
 
 export function createPostJournalService(repository: LedgerPostingRepository) {
-  return async function postJournal(command: PostJournalCommand): Promise<PostedJournalResult> {
-    const draft = prepareBalancedJournal(command);
+  return function postJournal(command: PostJournalCommand): Promise<PostedJournalResult> {
+    return traceOperation('ledger.post_journal', () => {
+      const draft = prepareBalancedJournal(command);
 
-    if (!isUuid(draft.tenantId)) {
-      throw new InvalidPostJournalCommandError(
-        'INVALID_TENANT_UUID',
-        'Tenant ID must be a valid UUID',
-      );
-    }
-
-    for (const posting of draft.postings) {
-      if (!isUuid(posting.accountId)) {
+      if (!isUuid(draft.tenantId)) {
         throw new InvalidPostJournalCommandError(
-          'INVALID_ACCOUNT_UUID',
-          'Every posting account ID must be a valid UUID',
+          'INVALID_TENANT_UUID',
+          'Tenant ID must be a valid UUID',
         );
       }
-    }
 
-    if (!isUuid(command.correlationId)) {
-      throw new InvalidPostJournalCommandError(
-        'INVALID_CORRELATION_UUID',
-        'Correlation ID must be a valid UUID',
-      );
-    }
+      for (const posting of draft.postings) {
+        if (!isUuid(posting.accountId)) {
+          throw new InvalidPostJournalCommandError(
+            'INVALID_ACCOUNT_UUID',
+            'Every posting account ID must be a valid UUID',
+          );
+        }
+      }
 
-    if (
-      typeof command.transactionType !== 'string' ||
-      command.transactionType.trim().length === 0 ||
-      command.transactionType.length > 80
-    ) {
-      throw new InvalidPostJournalCommandError(
-        'INVALID_TRANSACTION_TYPE',
-        'Transaction type must be non-empty and at most 80 characters',
-      );
-    }
+      if (!isUuid(command.correlationId)) {
+        throw new InvalidPostJournalCommandError(
+          'INVALID_CORRELATION_UUID',
+          'Correlation ID must be a valid UUID',
+        );
+      }
 
-    if (!isValidIdempotencyKey(command.idempotencyKey)) {
-      throw new InvalidPostJournalCommandError(
-        'INVALID_IDEMPOTENCY_KEY',
-        'Idempotency key must contain 1-128 printable non-whitespace ASCII characters',
-      );
-    }
+      if (
+        typeof command.transactionType !== 'string' ||
+        command.transactionType.trim().length === 0 ||
+        command.transactionType.length > 80
+      ) {
+        throw new InvalidPostJournalCommandError(
+          'INVALID_TRANSACTION_TYPE',
+          'Transaction type must be non-empty and at most 80 characters',
+        );
+      }
 
-    const requestHash = fingerprintPostJournal({
-      draft,
-      transactionType: command.transactionType,
-    });
+      if (!isValidIdempotencyKey(command.idempotencyKey)) {
+        throw new InvalidPostJournalCommandError(
+          'INVALID_IDEMPOTENCY_KEY',
+          'Idempotency key must contain 1-128 printable non-whitespace ASCII characters',
+        );
+      }
 
-    return repository.postPreparedJournal({
-      draft,
-      transactionType: command.transactionType,
-      correlationId: command.correlationId,
-      idempotencyKey: command.idempotencyKey,
-      requestHash,
+      const requestHash = fingerprintPostJournal({
+        draft,
+        transactionType: command.transactionType,
+      });
+
+      return repository.postPreparedJournal({
+        draft,
+        transactionType: command.transactionType,
+        correlationId: command.correlationId,
+        idempotencyKey: command.idempotencyKey,
+        requestHash,
+      });
     });
   };
 }

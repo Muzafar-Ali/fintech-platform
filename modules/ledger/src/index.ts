@@ -8,6 +8,8 @@ export { LedgerAccountUnavailableError } from './application/errors/ledger-accou
 export { createPostJournalService } from './application/services/post-journal.js';
 // PostgreSQL infrastructure adapter
 export { KyselyLedgerPostingRepository } from './infrastructure/repositories/kysely-ledger-posting.repository.js';
+export { IdempotencyConflictError } from './application/errors/idempotency-conflict.error.js';
+
 export type { JournalValidationCode } from './domain/errors/invalid-journal-draft.error.js';
 export type { PrepareJournalInput, PreparedJournal } from './domain/value-objects/journal-draft.js';
 export type {
@@ -23,4 +25,3 @@ export type {
   PersistPreparedJournalInput,
   PostedJournalResult,
 } from './application/ports/ledger-posting-repository.js';
-export { IdempotencyConflictError } from './application/errors/idempotency-conflict.error.js';
